@@ -49,7 +49,7 @@ var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || nav
   // Reference to the lone PeerConnection instance.
   rtc.peerConnections = {};
 
-  // Array of known peer client ids
+  // Array of known peer socket ids
   rtc.connections = [];
   // Stream-related variables.
   rtc.streams = [];
@@ -80,99 +80,94 @@ var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || nav
   rtc.dataChannelSupport = rtc.checkDataChannelSupport();
 
 
+  function sendMessage(msg) {
+    console.log('C->S: ', msg);
+    path = '/message?r=' + rtc._room + '&u=' + rtc._me;
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', path, true);
+    xhr.send(msg);
+  };
+  
   /**
-   * Connects to the server.
+   * Connects to the websocket server.
    */
-  rtc.connect = function() {
-    console.log('open channel');
-    var channel = new goog.appengine.Channel('{{ token }}');
-    var handler = {
-      'onopen': onChannelOpened,
-      'onmessage': onChannelMessage,
-      'onerror': onChannelError,
-      'onclose': onChannelClosed
-    };
+  rtc.connect = function(server, room) {
+    room = room || ""; // by default, join a room called the blank string
+    
+    var channel = new goog.appengine.Channel(server);
+    rtc._socket = channel.open();
+  
+    rtc._socket.onopen = function() {
 
-    rtc._socket = channel.open(handler);
-  }
-
-  function onChannelOpened() {
-    sendMessage({
+      sendMessage(JSON.stringify({
         "eventName": "join_room",
         "data":{
           "room": room
         }
-    });
+      }));
 
-    rtc.on('get_peers', function(data) {
-      // rtc.connections = data.connections;
-      // rtc._me = data.you;
-      // // fire connections event and pass peers
-      // rtc.fire('connections', rtc.connections);
-    });
+      rtc._socket.onmessage = function(msg) {
+        var json = JSON.parse(msg.data);
+        rtc.fire(json.eventName, json.data);
+      };
 
-    rtc.on('receive_ice_candidate', function(data) {
-      var candidate = new RTCIceCandidate(data);
-      rtc.peerConnections[data.socketId].addIceCandidate(candidate);
-      rtc.fire('receive ice candidate', candidate);
-    });
+      rtc._socket.onerror = function(err) {
+        console.error('onerror');
+        console.error(err);
+      };
 
-    rtc.on('new_peer_connected', function(data) {
-      rtc.connections.push(data.clientId);
+      rtc._socket.onclose = function(data) {
+        rtc.fire('disconnect stream', rtc._socket.id);
+        delete rtc.peerConnections[rtc._socket.id];
+      };
 
-      var pc = rtc.createPeerConnection(data.socketId);
-      for (var i = 0; i < rtc.streams.length; i++) {
-        var stream = rtc.streams[i];
-        pc.addStream(stream);
-      }
-    });
+      rtc.on('get_peers', function(data) {
+        rtc.connections = data.connections;
+        rtc._me = data.you;
+        // fire connections event and pass peers
+        rtc.fire('connections', rtc.connections);
+      });
 
-    rtc.on('remove_peer_connected', function(data) {
-      rtc.fire('disconnect stream', data.socketId);
-      delete rtc.peerConnections[data.socketId];
-    });
+      rtc.on('receive_ice_candidate', function(data) {
+        var candidate = new RTCIceCandidate(data);
+        rtc.peerConnections[data.socketId].addIceCandidate(candidate);
+        rtc.fire('receive ice candidate', candidate);
+      });
 
-    rtc.on('receive_offer', function(data) {
-      rtc.receiveOffer(data.socketId, data.sdp);
-      rtc.fire('receive offer', data);
-    });
+      rtc.on('new_peer_connected', function(data) {
+        rtc.connections.push(data.socketId);
 
-    rtc.on('receive_answer', function(data) {
-      rtc.receiveAnswer(data.socketId, data.sdp);
-      rtc.fire('receive answer', data);
-    });
+        var pc = rtc.createPeerConnection(data.socketId);
+        for (var i = 0; i < rtc.streams.length; i++) {
+          var stream = rtc.streams[i];
+          pc.addStream(stream);
+        }
+      });
 
-    rtc.fire('connect');
-  }
+      rtc.on('remove_peer_connected', function(data) {
+        rtc.fire('disconnect stream', data.socketId);
+        delete rtc.peerConnections[data.socketId];
+      });
 
-  function onChannelMessage(msg) {
-    var json = JSON.parse(msg.data);
-    rtc.fire(json.eventName, json.data);
-  }
+      rtc.on('receive_offer', function(data) {
+        rtc.receiveOffer(data.socketId, data.sdp);
+        rtc.fire('receive offer', data);
+      });
 
-  function onChannelError() {
-    console.error('onerror');
-    console.error(err);
-  }
+      rtc.on('receive_answer', function(data) {
+        rtc.receiveAnswer(data.socketId, data.sdp);
+        rtc.fire('receive answer', data);
+      });
 
-  function onChannelClosed() {
-    rtc.fire('disconnect stream', rtc._socket.id);
-    delete rtc.peerConnections[rtc._socket.id];
-  }
+      rtc.fire('connect');
+    };
+  };
 
-  function sendMessage(msg) {
-    var msgString = JSON.stringify(msg);
-    console.log('C->S: ' + msgString);
-    path = '/message?r={{ room_key }}' + '&u={{ me }}';
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', path, true);
-    xhr.send(msgString);
-  }
 
   rtc.sendOffers = function() {
     for (var i = 0, len = rtc.connections.length; i < len; i++) {
-      var clientId = rtc.connections[i];
-      rtc.sendOffer(clientId);
+      var socketId = rtc.connections[i];
+      rtc.sendOffer(socketId);
     }
   };
 
@@ -196,14 +191,14 @@ var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || nav
     var pc = rtc.peerConnections[id] = new PeerConnection(rtc.SERVER, config);
     pc.onicecandidate = function(event) {
       if (event.candidate) {
-         sendMessage({
+         sendMessage(JSON.stringify({
            "eventName": "send_ice_candidate",
            "data": {
               "label": event.candidate.label,
               "candidate": event.candidate.candidate,
-              "clientId": id
+              "socketId": id
            }
-         });
+         }));
        }
        rtc.fire('ice candidate', event.candidate);
      };
@@ -228,48 +223,48 @@ var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || nav
     return pc;
   };
 
-  rtc.sendOffer = function(clientId) {
-    var pc = rtc.peerConnections[clientId];
+  rtc.sendOffer = function(socketId) {
+    var pc = rtc.peerConnections[socketId];
     pc.createOffer( function(session_description) {
     pc.setLocalDescription(session_description);
-    sendMessage({
+    sendMessage(JSON.stringify({
         "eventName": "send_offer",
         "data":{
-            "clientId": clientId,
+            "socketId": socketId,
             "sdp": session_description
             }
-        });
+        }));
     });
   };
 
 
-  rtc.receiveOffer = function(clientId, sdp) {
-    var pc = rtc.peerConnections[clientId];
+  rtc.receiveOffer = function(socketId, sdp) {
+    var pc = rtc.peerConnections[socketId];
     pc.setRemoteDescription(new RTCSessionDescription(sdp));
-    rtc.sendAnswer(clientId);
+    rtc.sendAnswer(socketId);
   };
 
 
-  rtc.sendAnswer = function(clientId) {
-    var pc = rtc.peerConnections[clientId];
+  rtc.sendAnswer = function(socketId) {
+    var pc = rtc.peerConnections[socketId];
     pc.createAnswer( function(session_description) {
     pc.setLocalDescription(session_description);
-    sendMessage({
+    sendMessage(JSON.stringify({
         "eventName": "send_answer",
         "data":{
-            "clientId": clientId,
+            "socketId": socketId,
             "sdp": session_description
             }
         }
-    );
+    ));
     //TODO Unused variable!?
     var offer = pc.remoteDescription;
     });
   };
 
 
-  rtc.receiveAnswer = function(clientId, sdp) {
-    var pc = rtc.peerConnections[clientId];
+  rtc.receiveAnswer = function(socketId, sdp) {
+    var pc = rtc.peerConnections[socketId];
     pc.setRemoteDescription(new RTCSessionDescription(sdp));
   };
 

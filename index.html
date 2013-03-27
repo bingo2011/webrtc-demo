@@ -1,18 +1,104 @@
 <html>
-  <head>
-    <title>WebRTC APP Demo</title>
-    <meta http-equiv="X-UA-Compatible" content="chrome=1"/>
-    <link type="text/css" href="/stylesheets/style.css" rel="stylesheet"></link>
+<head>
+  <title>WebRTC APP Demo</title>
+  <meta http-equiv="X-UA-Compatible" content="chrome=1"/>
+  <link type="text/css" href="/stylesheets/style.css" rel="stylesheet"></link>
 
-    <script src="/_ah/channel/jsapi"></script>
+  <script src="/_ah/channel/jsapi"></script>
 
-    <!-- Load the polyfill to switch-hit between Chrome and Firefox -->
-    <script src="/js/webrtc.io.js"></script>
-  </head>
-  <body onload="init()">
+  <!-- Load the polyfill to switch-hit between Chrome and Firefox -->
+  <script src="/js/webrtc.io.js"></script>
+</head>
+<body>
+<script type="text/javascript">
+var videos = [];
+var PeerConnection = window.PeerConnection || window.webkitPeerConnection00 || window.webkitRTCPeerConnection;
+
+var room_key = '{{ room_key }}';
+var token = '{{ token }}';
+
+function getNumPerRow() {
+  var len = videos.length;
+  var biggest;
+
+  // Ensure length is even for better division.
+  if(len % 2 === 1) {
+    len++;
+  }
+
+  biggest = Math.ceil(Math.sqrt(len));
+  while(len % biggest !== 0) {
+    biggest++;
+  }
+  return biggest;
+}
+
+function subdivideVideos() {
+  var perRow = getNumPerRow();
+  var numInRow = 0;
+  for(var i = 0, len = videos.length; i < len; i++) {
+    var video = videos[i];
+    setWH(video, i);
+    numInRow = (numInRow + 1) % perRow;
+  }
+}
+
+function setWH(video, i) {
+  var perRow = getNumPerRow();
+  var perColumn = Math.ceil(videos.length / perRow);
+  var width = Math.floor((window.innerWidth) / perRow);
+  var height = Math.floor((window.innerHeight - 190) / perColumn);
+  video.width = width;
+  video.height = height;
+  video.style.position = "absolute";
+  video.style.left = (i % perRow) * width + "px";
+  video.style.top = Math.floor(i / perRow) * height + "px";
+}
+   
+function init() {
+  if(PeerConnection) {
+    console.log("Initializing; room=" + room_key)
+    rtc.createStream({
+        "video": true,
+        "audio": true
+      }, function(stream) {
+         document.getElementById('you').src = URL.createObjectURL(stream);
+          videos.push(document.getElementById('you'));
+          rtc.attachStream(stream, 'you');
+          subdivideVideos();
+    });
+  } else {
+    alert('Your browser is not supported or you have to turn on flags. In chrome you go to chrome://flags and turn on Enable PeerConnection remember to restart chrome');
+  }
+
+  rtc._me = {{ me }};
+  rtc._room = room_key;
+
+  rtc.connect(token, room_key);
+
+  rtc.on('add remote stream', function(stream, socketId) {
+    console.log("ADDING REMOTE STREAM...");
+    var clone = cloneVideo('you', socketId);
+    document.getElementById(clone.id).setAttribute("class", "");
+    rtc.attachStream(stream, clone.id);
+    subdivideVideos();
+  });
+
+  rtc.on('disconnect stream', function(data) {
+    console.log('remove ' + data);
+    removeVideo(data);
+  });
+}
+ 
+
+window.onresize = function(event) {
+  subdivideVideos();
+};
+  
+setTimeout(init, 1)
+</script>
     <div>
       <video id="you" class="flip" autoplay></video>
     </div>
-    <script src="/js/script.js"></script>
-  </body>
+</body>
 </html>
