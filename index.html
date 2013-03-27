@@ -14,7 +14,6 @@
 var videos = [];
 var PeerConnection = window.PeerConnection || window.webkitPeerConnection00 || window.webkitRTCPeerConnection;
 
-var room_key = '{{ room_key }}';
 var token = '{{ token }}';
 
 function getNumPerRow() {
@@ -57,7 +56,6 @@ function setWH(video, i) {
    
 function init() {
   if(PeerConnection) {
-    console.log("Initializing; room=" + room_key)
     rtc.createStream({
         "video": true,
         "audio": true
@@ -69,12 +67,13 @@ function init() {
     });
   } else {
     alert('Your browser is not supported or you have to turn on flags. In chrome you go to chrome://flags and turn on Enable PeerConnection remember to restart chrome');
+    return
   }
 
   rtc._me = {{ me }};
-  rtc._room = room_key;
+  rtc._room = '{{ room_key }}';
 
-  rtc.connect(token, room_key);
+  rtc.connect(token);
 
   rtc.on('add remote stream', function(stream, socketId) {
     console.log("ADDING REMOTE STREAM...");

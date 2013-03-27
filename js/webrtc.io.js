@@ -91,9 +91,7 @@ var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || nav
   /**
    * Connects to the websocket server.
    */
-  rtc.connect = function(server, room) {
-    room = room || ""; // by default, join a room called the blank string
-    
+  rtc.connect = function(server) {    
     var channel = new goog.appengine.Channel(server);
     rtc._socket = channel.open();
   
@@ -102,11 +100,12 @@ var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || nav
       sendMessage(JSON.stringify({
         "eventName": "join_room",
         "data":{
-          "room": room
+          "room": rtc._room
         }
       }));
 
       rtc._socket.onmessage = function(msg) {
+        console.log('S->C: ', msg.data)
         var json = JSON.parse(msg.data);
         rtc.fire(json.eventName, json.data);
       };

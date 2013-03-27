@@ -33,7 +33,7 @@ LOCK = threading.RLock()
 def generate_random(len):
     word = ''
     for i in range(len):
-       word += random.choice('0123456789')
+       word += random.choice('123456789')
     return word
 
 def append_url_argument(request, link):
@@ -46,14 +46,39 @@ def append_url_argument(request, link):
 def make_client_id(room, user):
     return room.key().id_or_name() + '/' + user
 
+def make_message(eventName, data):
+    msg = {}
+    msg["eventName"] = eventName
+    msg["data"] = data
+    return json.dumps(msg)
+
 def handle_message(room, user, message):
     message_obj = json.loads(message)
-    print message_obj['eventName']
+    eventName = message_obj['eventName']
     data = message_obj['data']
-    print json.dumps(room.get_other_users(user))
+
+    if eventName == 'join_room':
+        print 'join_room'
+        room_key = data['room']
+        room = Room.get_by_key_name(room_key)
+        if room:
+            # 'get_peers'
+
+            # 'new_peer_connected'
+            other_users = room.get_other_users(user)
+            print other_users
+            if other_users:
+                client_id = make_client_id(room, user)
+                data = {"connections":[]}
+                data["connections"].append(client_id)
+                message = make_message('new_peer_connected', data)
+                print message
+                for other in other_users:
+                    channel.send_message(client_id, message)
 
 
 class Room(db.Model):
+    #user_ids = db.ListProperty(str)
     user_ids = db.StringListProperty()
 
     def add_user(self, user):
@@ -61,8 +86,12 @@ class Room(db.Model):
         self.put()
 
     def get_other_users(self, user):
-        others = list(self.user_ids)
-        return others.remove(user)
+        if user in self.user_ids:
+            others = list(self.user_ids)
+            others.remove(user)
+            return others
+        else:
+            return []
 
     def has_user(self, user):
         return user in self.user_ids
@@ -100,9 +129,9 @@ class DisconnectPage(webapp2.RequestHandler):
             if room and room.has_user(user):
                 other_users = room.get_other_users(user)
                 if other_users:
-                    for other_user in other_users:
-                        channel.send_message(make_client_id(room, other_user), '{"type": "bye"}')
-                        logging.info('Sent BYE to ' + other_user)
+                    for other in other_users:
+                        channel.send_message(make_client_id(room, other), '{"type": "bye"}')
+                        logging.info('Sent BYE to ' + other)
 
                 room.remove_user(user)
                 logging.info('User ' + user + ' removed from room ' + room_key)
