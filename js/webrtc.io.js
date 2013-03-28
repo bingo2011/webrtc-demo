@@ -104,6 +104,8 @@ var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || nav
         }
       }));
 
+      console.log('User ' + rtc._me + ' join the room ' + rtc._room)
+
       rtc._socket.onmessage = function(msg) {
         console.log('S->C: ', msg.data)
         var json = JSON.parse(msg.data);
@@ -122,7 +124,7 @@ var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || nav
 
       rtc.on('get_peers', function(data) {
         rtc.connections = data.connections;
-        rtc._me = data.you;
+        // rtc._me = data.you;
         // fire connections event and pass peers
         rtc.fire('connections', rtc.connections);
       });
@@ -193,7 +195,7 @@ var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || nav
          sendMessage(JSON.stringify({
            "eventName": "send_ice_candidate",
            "data": {
-              "label": event.candidate.label,
+              "label": event.candidate.sdpMLineIndex,
               "candidate": event.candidate.candidate,
               "socketId": id
            }

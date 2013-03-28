@@ -53,6 +53,15 @@ function setWH(video, i) {
   video.style.left = (i % perRow) * width + "px";
   video.style.top = Math.floor(i / perRow) * height + "px";
 }
+
+function cloneVideo(domId, socketId) {
+  var video = document.getElementById(domId);
+  var clone = video.cloneNode(false);
+  clone.id = "remote" + socketId;
+  document.getElementById('videos').appendChild(clone);
+  videos.push(clone);
+  return clone;
+}
    
 function init() {
   if(PeerConnection) {
@@ -96,7 +105,7 @@ window.onresize = function(event) {
   
 setTimeout(init, 1)
 </script>
-    <div>
+    <div id="videos">
       <video id="you" class="flip" autoplay></video>
     </div>
 </body>

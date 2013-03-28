@@ -50,6 +50,7 @@ def make_message(eventName, data):
     msg = {}
     msg["eventName"] = eventName
     msg["data"] = data
+    # print 'Sending message ' + json.dumps(msg)
     return json.dumps(msg)
 
 def handle_message(room, user, message):
@@ -57,24 +58,53 @@ def handle_message(room, user, message):
     eventName = message_obj['eventName']
     data = message_obj['data']
 
+    # print message_obj
+
     if eventName == 'join_room':
-        print 'join_room'
         room_key = data['room']
         room = Room.get_by_key_name(room_key)
         if room:
+            other_users = room.get_other_users(user)
+
             # 'get_peers'
+            if other_users:
+                connections = [make_client_id(room, other) for other in other_users]
+                data = {"connections":connections}
+            else:
+                data = {"connections":[]}
+            message = make_message('get_peers', data)
+            channel.send_message(make_client_id(room, user), message)
 
             # 'new_peer_connected'
-            other_users = room.get_other_users(user)
-            print other_users
-            if other_users:
-                client_id = make_client_id(room, user)
-                data = {"connections":[]}
-                data["connections"].append(client_id)
+            if other_users: 
+                data = {'socketId': make_client_id(room, user)}
                 message = make_message('new_peer_connected', data)
-                print message
                 for other in other_users:
-                    channel.send_message(client_id, message)
+                    channel.send_message(make_client_id(room, other), message)
+    
+    elif eventName == 'send_offer':
+        client_id = data['socketId']
+
+        data = {"sdp":data['sdp'], "socketId":make_client_id(room, user)}
+        message = make_message('receive_offer', data)
+        
+        channel.send_message(client_id, message)
+
+    elif eventName == 'send_answer':
+        client_id = data['socketId']
+
+        data = {"sdp":data['sdp'], "socketId":make_client_id(room, user)}
+        message = make_message('receive_answer', data)
+        
+        channel.send_message(client_id, message)
+
+    elif eventName == 'send_ice_candidate':
+        client_id = data['socketId']
+
+        data = {"label": data['label'], "candidate": data['candidate'], "socketId":make_client_id(room, user)}
+        message = make_message('receive_ice_candidate', data)
+
+        channel.send_message(client_id, message)
 
 
 class Room(db.Model):
